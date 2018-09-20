@@ -1,0 +1,8 @@
+[package]
+name = "mycoin"
+version = "0.1.0"
+authors = ["Jack Meagher <jacqueman@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+sha1 = "0.6.0"
