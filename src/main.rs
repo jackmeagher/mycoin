@@ -2,6 +2,7 @@ extern crate sha1;
 const DIGEST_LENGTH: usize = 20;
 // First run, we're going to hash a vector of bytes into a 256-bit tuple (4 u64s)
 type DataBlock = [u8; DIGEST_LENGTH];
+type DataPad = [u8; DIGEST_LENGTH];
 
 fn hash(data: &[u8]) -> DataBlock {
     let mut m = sha1::Sha1::new();
@@ -35,7 +36,7 @@ fn format_byte(byte: &u8) -> String {
 fn count_zeroes_in_block(bytes: &DataBlock) -> u8 {
     let mut total_zeroes: u8 = 0;
     for byte in bytes.iter() {
-        let zeroes = (byte.leading_zeros() as u8);
+        let zeroes = byte.leading_zeros() as u8;
         total_zeroes += zeroes;
         if zeroes != 8 {
             return total_zeroes;
@@ -45,13 +46,39 @@ fn count_zeroes_in_block(bytes: &DataBlock) -> u8 {
     return total_zeroes;
 }
 
-fn generate_initial_pad() -> DataBlock {
-    return [ 0 as u8, 0 as u8, 0 as u8, 0 as u8,
+fn generate_initial_pad() -> Option<DataPad> {
+    return Some ( [ 0 as u8, 0 as u8, 0 as u8, 0 as u8,
              0 as u8, 0 as u8, 0 as u8, 0 as u8,
              0 as u8, 0 as u8, 0 as u8, 0 as u8,
              0 as u8, 0 as u8, 0 as u8, 0 as u8,
-             0 as u8, 0 as u8, 0 as u8, 0 as u8 ];
+             0 as u8, 0 as u8, 0 as u8, 0 as u8 ] );
 
+}
+
+fn next_pad(pad: Option<DataPad>) -> Option<DataPad> {
+    match pad {
+        Some(pad_) => next_pad_(pad_),
+        None => None
+    }
+}
+
+fn next_pad_(mut pad: DataPad) -> Option<DataPad> {
+    let mut idx: usize = DIGEST_LENGTH - 1;
+    while idx > 0 {
+        if pad[idx] != 255 {
+            pad[idx] += 1;
+            return Some(pad);
+        } else {
+            pad[idx] = 0;
+            idx -= 1;
+        }
+    }
+    // Have to inspect the MS'B' by hand to avoid underflowing usize
+    if pad[0] != 255 {
+        pad[0] += 1;
+        return Some(pad);
+    }
+    return None;
 }
 
 // Returns (main sum, carry)
@@ -148,6 +175,72 @@ mod tests {
         #[test]
         fn six() {
             assert_eq!(add_with_carry(128u8, 127u8), (255u8, false));
+        }
+    }
+
+    mod pad {
+        use super::generate_initial_pad;
+        use super::next_pad;
+
+        #[test]
+        fn gives_correct_second_pad() {
+            let pad = match next_pad(generate_initial_pad()) {
+                Some(pad_) => pad_,
+                None => panic!()
+            };
+
+            assert_eq!(pad,
+                       [ 0u8, 0u8, 0u8, 0u8,
+                         0u8, 0u8, 0u8, 0u8,
+                         0u8, 0u8, 0u8, 0u8,
+                         0u8, 0u8, 0u8, 0u8,
+                         0u8, 0u8, 0u8, 1u8 ]);
+
+        }
+
+        #[test]
+        fn rolls_over_correctly() {
+            let test_val = next_pad(
+                Some([ 0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 255u8 ]));
+            assert_eq!(test_val,
+                Some(
+                [ 0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 0u8, 0u8,
+                  0u8, 0u8, 1u8, 0u8 ]));
+        }
+
+        #[test]
+        fn gives_correct_last_pad() {
+            let test_val = next_pad(
+                Some([ 255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 254u8 ]));
+
+            assert_eq!(test_val,
+                Some([ 255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8 ]));
+        }
+
+        #[test]
+        fn ends_correctly() {
+            let test_val = next_pad(
+                Some([ 255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8,
+                  255u8, 255u8, 255u8, 255u8 ]));
+            assert_eq!(test_val, None);
         }
     }
 
