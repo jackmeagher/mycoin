@@ -1,10 +1,14 @@
+#![feature(repeat_generic_slice)]
 extern crate sha1;
 const DIGEST_LENGTH: usize = 20;
 // First run, we're going to hash a vector of bytes into a 256-bit tuple (4 u64s)
-type DataBlock = [u8; DIGEST_LENGTH];
-type DataPad = [u8; DIGEST_LENGTH];
+//type DataBlock = [u8; DIGEST_LENGTH];
+//type DataPad = [u8; DIGEST_LENGTH];
+type DataPad = Vec<u8>;
+type DataBlock = Vec<u8>;
+type Digest = [u8; DIGEST_LENGTH];
 
-fn hash(data: &[u8]) -> DataBlock {
+fn hash(data: &[u8]) -> Digest {
     let mut m = sha1::Sha1::new();
     m.update(data);
     return m.digest().bytes();
@@ -59,12 +63,8 @@ fn count_leading_zeros_in_block(bytes: &[u8]) -> u8 {
     total_zeros
 }
 
-fn generate_initial_pad() -> Option<DataPad> {
-    return Some ( [ 0 as u8, 0 as u8, 0 as u8, 0 as u8,
-             0 as u8, 0 as u8, 0 as u8, 0 as u8,
-             0 as u8, 0 as u8, 0 as u8, 0 as u8,
-             0 as u8, 0 as u8, 0 as u8, 0 as u8,
-             0 as u8, 0 as u8, 0 as u8, 0 as u8 ] );
+fn generate_initial_pad(length: usize) -> Option<DataPad> {
+    Some([0u8].repeat(length))
 
 }
 
@@ -76,7 +76,7 @@ fn next_pad(pad: Option<DataPad>) -> Option<DataPad> {
 }
 
 fn next_pad_(mut pad: DataPad) -> Option<DataPad> {
-    let mut idx: usize = DIGEST_LENGTH - 1;
+    let mut idx: usize = pad.len() - 1;
     while idx > 0 {
         if pad[idx] != 255 {
             pad[idx] += 1;
@@ -86,7 +86,7 @@ fn next_pad_(mut pad: DataPad) -> Option<DataPad> {
             idx -= 1;
         }
     }
-    // Have to inspect the MS'B' by hand to avoid underflowing usize
+    // Have to inspect the Most Significant Byte by hand to avoid underflowing usize
     if pad[0] != 255 {
         pad[0] += 1;
         return Some(pad);
@@ -99,6 +99,13 @@ fn add_with_carry(x: u8, y: u8) -> (u8, bool) {
     let sum: u16 = (x as u16) + (y as u16);
     let least_significant_byte = sum as u8;
     return (least_significant_byte, sum >= (256u16));
+}
+
+fn xor_blocks(data: &mut DataBlock, pad: &DataPad) {
+    debug_assert_eq!(data.len(), pad.len());
+    for i in 0..data.len() {
+        data[i] ^= pad[i];
+    }
 }
 
 
@@ -194,16 +201,38 @@ mod tests {
     mod pad {
         use super::generate_initial_pad;
         use super::next_pad;
+        use super::DIGEST_LENGTH;
 
         #[test]
-        fn gives_correct_second_pad() {
-            let pad = match next_pad(generate_initial_pad()) {
-                Some(pad_) => pad_,
-                None => panic!()
-            };
+        fn gives_correct_first_pad() {
+            let mut v: Vec<u8> = Vec::new();
+            assert_eq!(
+                generate_initial_pad(0).unwrap(),
+                v);
+            assert_eq!(
+                generate_initial_pad(1).unwrap(),
+                vec![0u8]);
+            assert_eq!(
+                generate_initial_pad(2).unwrap(),
+                vec![0u8, 0u8]);
+            assert_eq!(
+                generate_initial_pad(3).unwrap(),
+                vec![0u8, 0u8, 0u8]);
+        }
+
+        #[test]
+        fn gives_correct_short_second_pad() {
+            let pad = next_pad(generate_initial_pad(1)).unwrap();
+
+            assert_eq!(pad, vec![ 1u8 ]);
+
+        }
+        #[test]
+        fn gives_correct_long_second_pad() {
+            let pad = next_pad(generate_initial_pad(DIGEST_LENGTH)).unwrap();
 
             assert_eq!(pad,
-                       [ 0u8, 0u8, 0u8, 0u8,
+                       vec![ 0u8, 0u8, 0u8, 0u8,
                          0u8, 0u8, 0u8, 0u8,
                          0u8, 0u8, 0u8, 0u8,
                          0u8, 0u8, 0u8, 0u8,
@@ -214,14 +243,14 @@ mod tests {
         #[test]
         fn rolls_over_correctly() {
             let test_val = next_pad(
-                Some([ 0u8, 0u8, 0u8, 0u8,
+                Some(vec![ 0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 255u8 ]));
             assert_eq!(test_val,
                 Some(
-                [ 0u8, 0u8, 0u8, 0u8,
+                vec![ 0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
                   0u8, 0u8, 0u8, 0u8,
@@ -231,14 +260,14 @@ mod tests {
         #[test]
         fn gives_correct_last_pad() {
             let test_val = next_pad(
-                Some([ 255u8, 255u8, 255u8, 255u8,
+                Some(vec![ 255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 254u8 ]));
 
             assert_eq!(test_val,
-                Some([ 255u8, 255u8, 255u8, 255u8,
+                Some(vec![ 255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
@@ -248,7 +277,7 @@ mod tests {
         #[test]
         fn ends_correctly() {
             let test_val = next_pad(
-                Some([ 255u8, 255u8, 255u8, 255u8,
+                Some(vec![ 255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
                   255u8, 255u8, 255u8, 255u8,
