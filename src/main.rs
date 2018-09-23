@@ -46,17 +46,17 @@ fn byte_to_bits(byte: &u8) -> [bool; 8] {
     ]
 }
 
-fn count_zeroes_in_block(bytes: &DataBlock) -> u8 {
-    let mut total_zeroes: u8 = 0;
+fn count_leading_zeros_in_block(bytes: &[u8]) -> u8 {
+    let mut total_zeros: u8 = 0;
     for byte in bytes.iter() {
-        let zeroes = byte.leading_zeros() as u8;
-        total_zeroes += zeroes;
-        if zeroes != 8 {
-            return total_zeroes;
+        let zeros = byte.leading_zeros() as u8;
+        total_zeros += zeros;
+        if zeros != 8 {
+            return total_zeros;
         }
     }
-    // In case it's all zeroes!
-    return total_zeroes;
+    // In case it's all zeros!
+    total_zeros
 }
 
 fn generate_initial_pad() -> Option<DataPad> {
@@ -127,7 +127,7 @@ mod tests {
 
         #[test]
         fn digest_is_less_than_256_bits() {
-            // This is to make it okay to use u8 as the return type of count_leading_zeroes
+            // This is to make it okay to use u8 as the return type of count_leading_zeros
             assert!(DIGEST_LENGTH*8 < 256);
         }
     }
