@@ -17,20 +17,33 @@ fn format_bit(bit: bool) -> char {
     return '0';
 }
 
+fn format_byte(byte: &u8) -> String {
+    let mut s = String::new();
+    for bit in byte_to_bits(byte).iter() {
+        if (*bit) {
+            s.push('1');
+        } else {
+            s.push('0');
+        }
+    }
+    s
+}
+
 fn print_byte(byte: &u8) {
     println!("{}", format_byte(byte));
 }
 
-fn format_byte(byte: &u8) -> String {
-    format!("{}{}{}{}{}{}{}{}",
-             format_bit((byte & 0b10000000) != 0),
-             format_bit((byte & 0b01000000) != 0),
-             format_bit((byte & 0b00100000) != 0),
-             format_bit((byte & 0b00010000) != 0),
-             format_bit((byte & 0b00001000) != 0),
-             format_bit((byte & 0b00000100) != 0),
-             format_bit((byte & 0b00000010) != 0),
-             format_bit((byte & 0b00000001) != 0))
+fn byte_to_bits(byte: &u8) -> [bool; 8] {
+    [
+        (byte & 0b10000000) != 0,
+        (byte & 0b01000000) != 0,
+        (byte & 0b00100000) != 0,
+        (byte & 0b00010000) != 0,
+        (byte & 0b00001000) != 0,
+        (byte & 0b00000100) != 0,
+        (byte & 0b00000010) != 0,
+        (byte & 0b00000001) != 0
+    ]
 }
 
 fn count_zeroes_in_block(bytes: &DataBlock) -> u8 {
